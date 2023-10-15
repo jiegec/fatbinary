@@ -1,6 +1,6 @@
 # fatbinary
 
-Rust library to manipulate CUDA fatbinary format. Also provides utility to mimic the behavior of `fatbinary` provided by CUDA.
+Rust library to manipulate CUDA fatbinary format. Also provides utility to mimic the (partial) behavior of `fatbinary` and `cuobjdump` provided by CUDA.
 
 ## Acknowledgements
 
