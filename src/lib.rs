@@ -1,14 +1,20 @@
 use binread::BinRead;
 use binread::BinReaderExt;
+use std::borrow::Cow;
 use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
+use std::io::Write;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum FatBinaryError {
     #[error("Invalid magic (expected {expected:?}, got {got:?})")]
     InvalidMagic { expected: u32, got: u32 },
+    #[error("Invalid version (expected {expected:?}, got {got:?})")]
+    InvalidVersion { expected: u16, got: u16 },
+    #[error("Invalid header size (expected {expected:?}, got {got:?})")]
+    InvalidHeaderSize { expected: u16, got: u16 },
 
     #[error("Got binread::Error {source:?}")]
     Binread {
@@ -26,16 +32,17 @@ pub enum FatBinaryError {
 // learned from https://github.com/n-eiling/cuda-fatbin-decompression/blob/9b194a9aa526b71131990ddd97ff5c41a273ace5/fatbin-decompress.h#L13
 #[repr(C, packed)]
 #[derive(BinRead, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct FatBinaryHeader {
+struct FatBinaryHeader {
     pub magic: u32,
     pub version: u16,
     pub header_size: u16,
+    /// Size of payload beyond header
     pub size: u64,
 }
 
 #[repr(C, packed)]
 #[derive(BinRead, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct FatBinaryEntryHeader {
+struct FatBinaryEntryHeader {
     pub kind: u16,
     pub __unknown1: u16,
     pub header_size: u32,
@@ -58,9 +65,89 @@ pub struct FatBinaryEntry {
     payload: Vec<u8>,
 }
 
+// learned from https://github.com/n-eiling/cuda-fatbin-decompression/blob/9b194a9aa526b71131990ddd97ff5c41a273ace5/fatbin-decompress.c#L137
+fn decompress(compressed: &[u8]) -> Vec<u8> {
+    let mut res = vec![];
+
+    let mut in_pos = 0;
+    let mut next_non_compressed_len: usize;
+    let mut next_compressed_len: usize;
+    let mut back_offset: usize;
+
+    while in_pos < compressed.len() {
+        next_non_compressed_len = ((compressed[in_pos] & 0xf0) >> 4) as usize;
+        next_compressed_len = (4 + (compressed[in_pos] & 0xf)) as usize;
+        if next_non_compressed_len == 0xf {
+            loop {
+                in_pos += 1;
+                next_non_compressed_len += compressed[in_pos] as usize;
+                if compressed[in_pos] != 0xff {
+                    break;
+                }
+            }
+        }
+
+        in_pos += 1;
+        res.extend(&compressed[in_pos..(in_pos + next_non_compressed_len)]);
+
+        in_pos += next_non_compressed_len;
+        if in_pos >= compressed.len() {
+            break;
+        }
+        back_offset = compressed[in_pos] as usize + ((compressed[in_pos + 1] as usize) << 8);
+        in_pos += 2;
+
+        if next_compressed_len == 0xf + 4 {
+            loop {
+                next_compressed_len += compressed[in_pos] as usize;
+                in_pos += 1;
+                if compressed[in_pos - 1] != 0xff {
+                    break;
+                }
+            }
+        }
+
+        let res_len = res.len();
+        for i in 0..next_compressed_len {
+            res.push(res[res_len - back_offset + i]);
+        }
+    }
+
+    res
+}
+
 impl FatBinaryEntry {
     pub fn get_payload(&self) -> &[u8] {
-        &self.payload
+        if self.is_compressed() {
+            &self.payload[..self.entry_header.compressed_size as usize]
+        } else {
+            &self.payload
+        }
+    }
+
+    pub fn get_decompressed_payload(&self) -> Cow<'_, [u8]> {
+        if self.is_compressed() {
+            Cow::Owned(decompress(
+                &self.payload[..self.entry_header.compressed_size as usize],
+            ))
+        } else {
+            Cow::Borrowed(&self.payload)
+        }
+    }
+
+    pub fn decompress(&mut self) {
+        if self.is_compressed() {
+            self.payload = decompress(&self.payload[..self.entry_header.compressed_size as usize]);
+            self.entry_header.flags &= !0x2000; // clear compressed flag
+
+            assert_eq!(
+                self.payload.len(),
+                self.entry_header.decompressed_size as usize
+            );
+            self.entry_header.size = self.entry_header.decompressed_size;
+            self.entry_header.compressed_size = 0;
+            self.entry_header.decompressed_size = 0;
+        }
     }
 
     pub fn contains_elf(&self) -> bool {
@@ -90,7 +177,6 @@ impl FatBinaryEntry {
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FatBinary {
-    header: FatBinaryHeader,
     entries: Vec<FatBinaryEntry>,
 }
 
@@ -108,6 +194,20 @@ impl FatBinary {
             return Err(FatBinaryError::InvalidMagic {
                 expected: FAT_BINARY_MAGIC,
                 got: header.magic,
+            });
+        }
+
+        if header.version != 1 {
+            return Err(FatBinaryError::InvalidVersion {
+                expected: 1,
+                got: header.version,
+            });
+        }
+
+        if header.header_size != std::mem::size_of::<FatBinaryHeader>() as u16 {
+            return Err(FatBinaryError::InvalidHeaderSize {
+                expected: std::mem::size_of::<FatBinaryHeader>() as u16,
+                got: header.header_size,
             });
         }
 
@@ -136,8 +236,12 @@ impl FatBinary {
             })
         }
 
-        let res = FatBinary { header, entries };
+        let res = FatBinary { entries };
         Ok(res)
+    }
+
+    pub fn write<W: Write>(mut writer: W) -> Result<(), FatBinaryError> {
+        Ok(())
     }
 }
 
