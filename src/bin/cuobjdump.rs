@@ -26,7 +26,7 @@ fn main() -> anyhow::Result<()> {
             .file_stem()
             .map(OsString::from)
             .unwrap_or(OsString::new());
-        for entry in fatbinary.get_entries() {
+        for entry in fatbinary.entries() {
             if entry.contains_elf() {
                 continue;
             }
@@ -49,7 +49,7 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    for entry in fatbinary.get_entries() {
+    for entry in fatbinary.entries() {
         println!();
         println!(
             "Fatbin {} code:",

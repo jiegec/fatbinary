@@ -133,6 +133,29 @@ fn decompress(compressed: &[u8]) -> Vec<u8> {
 }
 
 impl FatBinaryEntry {
+    /// Create a new entry
+    pub fn new<T: Into<Vec<u8>>>(is_elf: bool, sm_arch: u32, payload: T) -> Self {
+        let payload: Vec<u8> = payload.into();
+        Self {
+            entry_header: FatBinaryEntryHeader {
+                kind: if is_elf { 2 } else { 1 },
+                __unknown1: 0,
+                header_size: 64,
+                size: payload.len() as u64,
+                compressed_size: 0,
+                __unknown2: 0,
+                minor: 0,
+                major: 0,
+                arch: sm_arch,
+                obj_name_offset: 0,
+                obj_name_len: 0,
+                flags: 0,
+                zero: 0,
+                decompressed_size: 0,
+            },
+            payload,
+        }
+    }
     /// Get (possibly compressed) payload contained in this entry
     pub fn get_payload(&self) -> &[u8] {
         if self.is_compressed() {
@@ -210,8 +233,13 @@ const FAT_BINARY_MAGIC: u32 = 0xBA55ED50;
 
 impl FatBinary {
     /// Get entries contained in the fatbinary
-    pub fn get_entries(&self) -> &[FatBinaryEntry] {
+    pub fn entries(&self) -> &Vec<FatBinaryEntry> {
         &self.entries
+    }
+
+    /// Get mutable entries contained in the fatbinary
+    pub fn entries_mut(&mut self) -> &mut Vec<FatBinaryEntry> {
+        &mut self.entries
     }
 
     /// Create a new empty fatbinary
@@ -307,6 +335,15 @@ impl FatBinary {
             writer.write(&entry.entry_header.flags.to_le_bytes())?;
             writer.write(&entry.entry_header.zero.to_le_bytes())?;
             writer.write(&entry.entry_header.decompressed_size.to_le_bytes())?;
+
+            if entry.entry_header.header_size > std::mem::size_of::<FatBinaryEntryHeader>() as u32 {
+                let zeros = vec![
+                    0u8;
+                    entry.entry_header.header_size as usize
+                        - std::mem::size_of::<FatBinaryEntryHeader>()
+                ];
+                writer.write(&zeros)?;
+            }
 
             writer.write(&entry.payload)?;
         }
