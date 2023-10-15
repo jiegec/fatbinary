@@ -58,6 +58,36 @@ pub struct FatBinaryEntry {
     payload: Vec<u8>,
 }
 
+impl FatBinaryEntry {
+    pub fn get_payload(&self) -> &[u8] {
+        &self.payload
+    }
+
+    pub fn contains_elf(&self) -> bool {
+        self.entry_header.kind == 2
+    }
+
+    pub fn get_sm_arch(&self) -> u32 {
+        self.entry_header.arch
+    }
+
+    pub fn get_version_major(&self) -> u16 {
+        self.entry_header.major
+    }
+
+    pub fn get_version_minor(&self) -> u16 {
+        self.entry_header.minor
+    }
+
+    pub fn compile_size_is_64bit(&self) -> bool {
+        (self.entry_header.flags & 0x10) != 0
+    }
+
+    pub fn is_compressed(&self) -> bool {
+        (self.entry_header.flags & 0x2000) != 0
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FatBinary {
     header: FatBinaryHeader,
@@ -67,6 +97,10 @@ pub struct FatBinary {
 const FAT_BINARY_MAGIC: u32 = 0xBA55ED50;
 
 impl FatBinary {
+    pub fn get_entries(&self) -> &[FatBinaryEntry] {
+        &self.entries
+    }
+
     pub fn read<R: Read + Seek>(mut reader: R) -> Result<FatBinary, FatBinaryError> {
         let header: FatBinaryHeader = reader.read_le()?;
 
