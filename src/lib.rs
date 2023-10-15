@@ -1,3 +1,10 @@
+//! fatbinary create: parse and manipulate fatbinary files
+//!
+//! You can use [FatBinary] struct to open and create fatbinary files. Fatbinary
+//! contains multiple entries containing ELF or PTX files, and each entry can be
+//! accessed via [FatBinaryEntry].
+//!
+
 use binread::BinRead;
 use binread::BinReaderExt;
 use std::borrow::Cow;
@@ -7,21 +14,29 @@ use std::io::SeekFrom;
 use std::io::Write;
 use thiserror::Error;
 
+/// Errors from fatbinary crate
 #[derive(Error, Debug)]
 pub enum FatBinaryError {
+    /// Got invalid magic number
     #[error("Invalid magic (expected {expected:?}, got {got:?})")]
     InvalidMagic { expected: u32, got: u32 },
+
+    /// Got invalid fatbinary veresion
     #[error("Invalid version (expected {expected:?}, got {got:?})")]
     InvalidVersion { expected: u16, got: u16 },
+
+    /// Got invalid header size
     #[error("Invalid header size (expected {expected:?}, got {got:?})")]
     InvalidHeaderSize { expected: u16, got: u16 },
 
+    /// Got error from binread crate
     #[error("Got binread::Error {source:?}")]
     Binread {
         #[from]
         source: binread::Error,
     },
 
+    /// Got error from std::io module
     #[error("Got std::io::Error {source:?}")]
     Io {
         #[from]
@@ -59,6 +74,7 @@ struct FatBinaryEntryHeader {
     pub decompressed_size: u64,
 }
 
+/// A fatbinary entry
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FatBinaryEntry {
     entry_header: FatBinaryEntryHeader,
@@ -117,6 +133,7 @@ fn decompress(compressed: &[u8]) -> Vec<u8> {
 }
 
 impl FatBinaryEntry {
+    /// Get (possibly compressed) payload contained in this entry
     pub fn get_payload(&self) -> &[u8] {
         if self.is_compressed() {
             &self.payload[..self.entry_header.compressed_size as usize]
@@ -125,6 +142,7 @@ impl FatBinaryEntry {
         }
     }
 
+    /// Get payload contained in this entry, decompress if it was compressed
     pub fn get_decompressed_payload(&self) -> Cow<'_, [u8]> {
         if self.is_compressed() {
             Cow::Owned(decompress(
@@ -135,6 +153,7 @@ impl FatBinaryEntry {
         }
     }
 
+    /// Replace the payload with decompressed data
     pub fn decompress(&mut self) {
         if self.is_compressed() {
             self.payload = decompress(&self.payload[..self.entry_header.compressed_size as usize]);
@@ -150,31 +169,38 @@ impl FatBinaryEntry {
         }
     }
 
+    /// Check if this entry contains ELF
     pub fn contains_elf(&self) -> bool {
         self.entry_header.kind == 2
     }
 
+    /// Get CUDA SM architecture
     pub fn get_sm_arch(&self) -> u32 {
         self.entry_header.arch
     }
 
+    /// Get major version
     pub fn get_version_major(&self) -> u16 {
         self.entry_header.major
     }
 
+    /// Get minor version
     pub fn get_version_minor(&self) -> u16 {
         self.entry_header.minor
     }
 
+    /// Check if compiled for 64 bit
     pub fn compile_size_is_64bit(&self) -> bool {
         (self.entry_header.flags & 0x10) != 0
     }
 
+    /// Check if payload is compressed
     pub fn is_compressed(&self) -> bool {
         (self.entry_header.flags & 0x2000) != 0
     }
 }
 
+/// A fatbinary file
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FatBinary {
     entries: Vec<FatBinaryEntry>,
@@ -183,10 +209,17 @@ pub struct FatBinary {
 const FAT_BINARY_MAGIC: u32 = 0xBA55ED50;
 
 impl FatBinary {
+    /// Get entries contained in the fatbinary
     pub fn get_entries(&self) -> &[FatBinaryEntry] {
         &self.entries
     }
 
+    /// Create a new empty fatbinary
+    pub fn new() -> Self {
+        Self { entries: vec![] }
+    }
+
+    /// Read fatbinary from reader
     pub fn read<R: Read + Seek>(mut reader: R) -> Result<FatBinary, FatBinaryError> {
         let header: FatBinaryHeader = reader.read_le()?;
 
@@ -240,7 +273,44 @@ impl FatBinary {
         Ok(res)
     }
 
-    pub fn write<W: Write>(mut writer: W) -> Result<(), FatBinaryError> {
+    /// Wriet fatbinary to writer
+    pub fn write<W: Write>(&self, mut writer: W) -> Result<(), FatBinaryError> {
+        let payload_size = self
+            .entries
+            .iter()
+            .map(|entry| entry.entry_header.header_size as u64 + entry.entry_header.size)
+            .sum();
+        let header = FatBinaryHeader {
+            magic: FAT_BINARY_MAGIC,
+            version: 1,
+            header_size: std::mem::size_of::<FatBinaryHeader>() as u16,
+            size: payload_size,
+        };
+
+        writer.write(&header.magic.to_le_bytes())?;
+        writer.write(&header.version.to_le_bytes())?;
+        writer.write(&header.header_size.to_le_bytes())?;
+        writer.write(&header.size.to_le_bytes())?;
+
+        for entry in &self.entries {
+            writer.write(&entry.entry_header.kind.to_le_bytes())?;
+            writer.write(&entry.entry_header.__unknown1.to_le_bytes())?;
+            writer.write(&entry.entry_header.header_size.to_le_bytes())?;
+            writer.write(&entry.entry_header.size.to_le_bytes())?;
+            writer.write(&entry.entry_header.compressed_size.to_le_bytes())?;
+            writer.write(&entry.entry_header.__unknown2.to_le_bytes())?;
+            writer.write(&entry.entry_header.minor.to_le_bytes())?;
+            writer.write(&entry.entry_header.major.to_le_bytes())?;
+            writer.write(&entry.entry_header.arch.to_le_bytes())?;
+            writer.write(&entry.entry_header.obj_name_offset.to_le_bytes())?;
+            writer.write(&entry.entry_header.obj_name_len.to_le_bytes())?;
+            writer.write(&entry.entry_header.flags.to_le_bytes())?;
+            writer.write(&entry.entry_header.zero.to_le_bytes())?;
+            writer.write(&entry.entry_header.decompressed_size.to_le_bytes())?;
+
+            writer.write(&entry.payload)?;
+        }
+
         Ok(())
     }
 }
