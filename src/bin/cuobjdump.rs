@@ -63,14 +63,13 @@ fn main() -> anyhow::Result<()> {
             entry.get_version_minor()
         );
         println!("producer = <unknown>");
-        println!("host = linux");
+        println!(
+            "host = {}",
+            if entry.is_linux() { "linux" } else { "windows" }
+        );
         println!(
             "compile_size = {}",
-            if entry.compile_size_is_64bit() {
-                "64bit"
-            } else {
-                "32bit"
-            }
+            if entry.is_64bit() { "64bit" } else { "32bit" }
         );
 
         if entry.is_compressed() {

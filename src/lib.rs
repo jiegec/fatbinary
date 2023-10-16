@@ -55,6 +55,13 @@ struct FatBinaryHeader {
     pub size: u64,
 }
 
+// https://github.com/n-eiling/cuda-fatbin-decompression/blob/9b194a9aa526b71131990ddd97ff5c41a273ace5/fatbin-decompress.c#L22
+
+const FATBINARY_FLAG_64BIT: u64 = 0x00000001;
+const FATBINARY_FLAG_DEBUG: u64 = 0x00000002;
+const FATBINARY_FLAG_LINUX: u64 = 0x00000010;
+const FATBINARY_FLAG_COMPRESSED: u64 = 0x00002000;
+
 #[repr(C, packed)]
 #[derive(BinRead, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct FatBinaryEntryHeader {
@@ -180,7 +187,7 @@ impl FatBinaryEntry {
     pub fn decompress(&mut self) {
         if self.is_compressed() {
             self.payload = decompress(&self.payload[..self.entry_header.compressed_size as usize]);
-            self.entry_header.flags &= !0x2000; // clear compressed flag
+            self.entry_header.flags &= !FATBINARY_FLAG_COMPRESSED; // clear compressed flag
 
             assert_eq!(
                 self.payload.len(),
@@ -213,13 +220,18 @@ impl FatBinaryEntry {
     }
 
     /// Check if compiled for 64 bit
-    pub fn compile_size_is_64bit(&self) -> bool {
-        (self.entry_header.flags & 0x10) != 0
+    pub fn is_64bit(&self) -> bool {
+        (self.entry_header.flags & FATBINARY_FLAG_64BIT) != 0
+    }
+
+    /// Check if compiled in/for linux
+    pub fn is_linux(&self) -> bool {
+        (self.entry_header.flags & FATBINARY_FLAG_LINUX) != 0
     }
 
     /// Check if payload is compressed
     pub fn is_compressed(&self) -> bool {
-        (self.entry_header.flags & 0x2000) != 0
+        (self.entry_header.flags & FATBINARY_FLAG_COMPRESSED) != 0
     }
 }
 
