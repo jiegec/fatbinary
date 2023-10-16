@@ -536,4 +536,15 @@ mod tests {
         // second is ptx
         assert!(entries[1].has_debug_info());
     }
+
+    #[test]
+    fn read_axpy_ptxas_options() {
+        let file = File::open("tests/axpy-ptxas-options.fatbin").unwrap();
+        let fatbin = FatBinary::read(file).unwrap();
+
+        let entries = fatbin.entries();
+
+        // second is ptx
+        assert_eq!(entries[1].get_ptxas_options().unwrap().trim(), "-O3");
+    }
 }

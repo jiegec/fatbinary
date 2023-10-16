@@ -9,3 +9,5 @@ cp axpy.cu-cuda-nvptx64-nvidia-cuda.fatbin axpy-default.fatbin
 
 $CXX axpy.cu -g -o axpy $CFLAGS
 cp axpy.cu-cuda-nvptx64-nvidia-cuda.fatbin axpy-debug.fatbin
+
+nvcc axpy.cu -Xptxas -O3 -o axpy-ptxas-options.fatbin --fatbin
