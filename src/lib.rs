@@ -140,8 +140,24 @@ fn decompress(compressed: &[u8]) -> Vec<u8> {
 }
 
 impl FatBinaryEntry {
+    /// Create a new entry with autodetection
+    pub fn new_auto<T: Into<Vec<u8>>>(sm_arch: u32, payload: T) -> Self {
+        let payload: Vec<u8> = payload.into();
+
+        // check ELF magic
+        let is_elf = payload.starts_with(&[0x7f, 0x45, 0x4c, 0x46]);
+        Self::new(is_elf, sm_arch, 0, 0, true, payload)
+    }
+
     /// Create a new entry
-    pub fn new<T: Into<Vec<u8>>>(is_elf: bool, sm_arch: u32, payload: T) -> Self {
+    pub fn new<T: Into<Vec<u8>>>(
+        is_elf: bool,
+        sm_arch: u32,
+        major: u16,
+        minor: u16,
+        is_64bit: bool,
+        payload: T,
+    ) -> Self {
         let payload: Vec<u8> = payload.into();
         Self {
             entry_header: FatBinaryEntryHeader {
@@ -151,12 +167,12 @@ impl FatBinaryEntry {
                 size: payload.len() as u64,
                 compressed_size: 0,
                 __unknown2: 0,
-                minor: 0,
-                major: 0,
+                minor: minor,
+                major: major,
                 arch: sm_arch,
                 obj_name_offset: 0,
                 obj_name_len: 0,
-                flags: 0,
+                flags: if is_64bit { FATBINARY_FLAG_64BIT } else { 0 },
                 zero: 0,
                 decompressed_size: 0,
             },

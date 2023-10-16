@@ -42,8 +42,7 @@ fn main() -> anyhow::Result<()> {
                 let mut payload = vec![];
                 File::open(file_name)?.read_to_end(&mut payload)?;
 
-                let is_elf = file_name.ends_with(".o");
-                let entry = FatBinaryEntry::new(is_elf, sm_arch, payload);
+                let entry = FatBinaryEntry::new_auto(sm_arch, payload);
                 res.entries_mut().push(entry);
             }
         }
