@@ -167,8 +167,8 @@ impl FatBinaryEntry {
                 size: payload.len() as u64,
                 compressed_size: 0,
                 __unknown2: 0,
-                minor: minor,
-                major: major,
+                minor,
+                major,
                 arch: sm_arch,
                 obj_name_offset: 0,
                 obj_name_len: 0,
@@ -257,7 +257,7 @@ impl FatBinaryEntry {
 }
 
 /// A fatbinary file
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct FatBinary {
     entries: Vec<FatBinaryEntry>,
 }
@@ -348,26 +348,26 @@ impl FatBinary {
             size: payload_size,
         };
 
-        writer.write(&header.magic.to_le_bytes())?;
-        writer.write(&header.version.to_le_bytes())?;
-        writer.write(&header.header_size.to_le_bytes())?;
-        writer.write(&header.size.to_le_bytes())?;
+        writer.write_all(&header.magic.to_le_bytes())?;
+        writer.write_all(&header.version.to_le_bytes())?;
+        writer.write_all(&header.header_size.to_le_bytes())?;
+        writer.write_all(&header.size.to_le_bytes())?;
 
         for entry in &self.entries {
-            writer.write(&entry.entry_header.kind.to_le_bytes())?;
-            writer.write(&entry.entry_header.__unknown1.to_le_bytes())?;
-            writer.write(&entry.entry_header.header_size.to_le_bytes())?;
-            writer.write(&entry.entry_header.size.to_le_bytes())?;
-            writer.write(&entry.entry_header.compressed_size.to_le_bytes())?;
-            writer.write(&entry.entry_header.__unknown2.to_le_bytes())?;
-            writer.write(&entry.entry_header.minor.to_le_bytes())?;
-            writer.write(&entry.entry_header.major.to_le_bytes())?;
-            writer.write(&entry.entry_header.arch.to_le_bytes())?;
-            writer.write(&entry.entry_header.obj_name_offset.to_le_bytes())?;
-            writer.write(&entry.entry_header.obj_name_len.to_le_bytes())?;
-            writer.write(&entry.entry_header.flags.to_le_bytes())?;
-            writer.write(&entry.entry_header.zero.to_le_bytes())?;
-            writer.write(&entry.entry_header.decompressed_size.to_le_bytes())?;
+            writer.write_all(&entry.entry_header.kind.to_le_bytes())?;
+            writer.write_all(&entry.entry_header.__unknown1.to_le_bytes())?;
+            writer.write_all(&entry.entry_header.header_size.to_le_bytes())?;
+            writer.write_all(&entry.entry_header.size.to_le_bytes())?;
+            writer.write_all(&entry.entry_header.compressed_size.to_le_bytes())?;
+            writer.write_all(&entry.entry_header.__unknown2.to_le_bytes())?;
+            writer.write_all(&entry.entry_header.minor.to_le_bytes())?;
+            writer.write_all(&entry.entry_header.major.to_le_bytes())?;
+            writer.write_all(&entry.entry_header.arch.to_le_bytes())?;
+            writer.write_all(&entry.entry_header.obj_name_offset.to_le_bytes())?;
+            writer.write_all(&entry.entry_header.obj_name_len.to_le_bytes())?;
+            writer.write_all(&entry.entry_header.flags.to_le_bytes())?;
+            writer.write_all(&entry.entry_header.zero.to_le_bytes())?;
+            writer.write_all(&entry.entry_header.decompressed_size.to_le_bytes())?;
 
             if entry.entry_header.header_size > std::mem::size_of::<FatBinaryEntryHeader>() as u32 {
                 let zeros = vec![
@@ -375,10 +375,10 @@ impl FatBinary {
                     entry.entry_header.header_size as usize
                         - std::mem::size_of::<FatBinaryEntryHeader>()
                 ];
-                writer.write(&zeros)?;
+                writer.write_all(&zeros)?;
             }
 
-            writer.write(&entry.payload)?;
+            writer.write_all(&entry.payload)?;
         }
 
         Ok(())

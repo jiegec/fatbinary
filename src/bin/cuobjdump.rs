@@ -1,10 +1,9 @@
-use anyhow;
 use clap::Parser;
 use fatbinary::FatBinary;
 use std::{
     ffi::OsString,
     fs::File,
-    io::{Seek, Write, SeekFrom},
+    io::{Seek, Write},
     path::PathBuf,
 };
 
@@ -55,7 +54,7 @@ fn main() -> anyhow::Result<()> {
 
     // support concatenated fatbinary file (e.g. objcopy-ed from .nv_fatbin section)
     let file_size = file.metadata()?.len();
-    while file.seek(SeekFrom::Current(0))? < file_size {
+    while file.stream_position()? < file_size {
         let fatbinary = FatBinary::read(&mut file)?;
         for entry in fatbinary.entries() {
             println!();

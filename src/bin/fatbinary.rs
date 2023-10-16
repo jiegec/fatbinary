@@ -1,4 +1,3 @@
-use anyhow;
 use clap::Parser;
 use fatbinary::{FatBinary, FatBinaryEntry};
 use std::{fs::File, io::Read, path::PathBuf};
@@ -24,14 +23,14 @@ fn main() -> anyhow::Result<()> {
         for image in args.images {
             let mut file_name = None;
             let mut sm_arch = 50;
-            for part in image.split(",") {
-                if let Some((key, value)) = part.split_once("=") {
+            for part in image.split(',') {
+                if let Some((key, value)) = part.split_once('=') {
                     if key == "file" {
                         file_name = Some(value);
                     } else if key == "profile" {
-                        if let Some((prefix, arch)) = value.split_once("_") {
+                        if let Some((prefix, arch)) = value.split_once('_') {
                             if prefix == "compute" || prefix == "sm" {
-                                sm_arch = u32::from_str_radix(arch, 10)?;
+                                sm_arch = arch.parse()?;
                             }
                         }
                     }
