@@ -29,6 +29,10 @@ pub enum FatBinaryError {
     #[error("Invalid header size (expected {expected:?}, got {got:?})")]
     InvalidHeaderSize { expected: u16, got: u16 },
 
+    /// Got invalid offset
+    #[error("Invalid offset (expected {expected:?}, got {got:?})")]
+    InvalidOffset { expected: u32, got: u32 },
+
     /// Got error from binread crate
     #[error("Got binread::Error {source:?}")]
     Binread {
@@ -41,6 +45,13 @@ pub enum FatBinaryError {
     Io {
         #[from]
         source: std::io::Error,
+    },
+
+    /// Got error std::string::FromUtf8Error
+    #[error("Got std::string::FromUtf8Error {source:?}")]
+    FromUtf8 {
+        #[from]
+        source: std::string::FromUtf8Error,
     },
 }
 
@@ -90,12 +101,12 @@ pub struct FatBinaryEntryHeader {
     kind: u16,
     /// 0x101
     __unknown1: u16,
-    /// 0x40 if ELF, 0x48 if PTX
+    /// 0x40 if ELF, >=0x48 if PTX
     header_size: u32,
     size: u64,
     compressed_size: u32,
     /// 0x00 if ELF, 0x40 if PTX
-    __unknown2: u32,
+    options_offset: u32,
     minor: u16,
     major: u16,
     arch: u32,
@@ -104,13 +115,16 @@ pub struct FatBinaryEntryHeader {
     flags: u64,
     zero: u64,
     decompressed_size: u64,
-    // additional 8 bytes of zero here if PTX
+    // additional 8 bytes here if PTX
+    // ptxas_options_offset: u4,
+    // ptxas_options_size: u4
 }
 
 /// A fatbinary entry
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FatBinaryEntry {
     entry_header: FatBinaryEntryHeader,
+    ptxas_options: Option<String>,
     payload: Vec<u8>,
 }
 
@@ -192,7 +206,7 @@ impl FatBinaryEntry {
                 header_size: 64,
                 size: payload.len() as u64,
                 compressed_size: 0,
-                __unknown2: if is_elf { 0x00 } else { 0x40 },
+                options_offset: if is_elf { 0x00 } else { 0x40 },
                 minor,
                 major,
                 arch: sm_arch,
@@ -206,6 +220,7 @@ impl FatBinaryEntry {
                 zero: 0,
                 decompressed_size: 0,
             },
+            ptxas_options: None,
             payload,
         }
     }
@@ -308,6 +323,11 @@ impl FatBinaryEntry {
     pub fn get_header(&self) -> &FatBinaryEntryHeader {
         &self.entry_header
     }
+
+    /// Get ptxas options
+    pub fn get_ptxas_options(&self) -> Option<&str> {
+        self.ptxas_options.as_ref().map(|s| s.as_str())
+    }
 }
 
 /// A fatbinary file
@@ -365,11 +385,42 @@ impl FatBinary {
         while current_size < header.size {
             let entry_header: FatBinaryEntryHeader = reader.read_le()?;
 
-            // handle case when header size == 72
+            // handle case when header size > 64 e.g. PTX
+            let mut ptxas_options = None;
             if entry_header.header_size > std::mem::size_of::<FatBinaryEntryHeader>() as u32 {
+                if entry_header.options_offset != 0x40 {
+                    return Err(FatBinaryError::InvalidOffset {
+                        expected: 0x40,
+                        got: entry_header.options_offset,
+                    });
+                }
+                let ptxas_options_offset: u32 = reader.read_le()?;
+                let ptxas_options_size: u32 = reader.read_le()?;
+
+                // locate ptxas options
                 reader.seek(SeekFrom::Current(
-                    entry_header.header_size as i64
-                        - std::mem::size_of::<FatBinaryEntryHeader>() as i64,
+                    (
+                        ptxas_options_offset as usize
+                        - std::mem::size_of::<FatBinaryEntryHeader>()
+                        - std::mem::size_of::<u32>() // ptxas_options_offset
+                        - std::mem::size_of::<u32>()
+                        // ptxas_options_size
+                    ) as i64,
+                ))?;
+                let mut ptxas_options_bytes = vec![0u8; ptxas_options_size as usize];
+                reader.read_exact(&mut ptxas_options_bytes)?;
+                ptxas_options = Some(String::from_utf8(ptxas_options_bytes)?);
+
+                // seek to payload
+                reader.seek(SeekFrom::Current(
+                    (
+                        entry_header.header_size as usize
+                        - std::mem::size_of::<FatBinaryEntryHeader>()
+                        - std::mem::size_of::<u32>() // ptxas_options_offset
+                        - std::mem::size_of::<u32>()// ptxas_options_size
+                        - ptxas_options_size as usize
+                        // ptxas_options
+                    ) as i64,
                 ))?;
             }
             current_size += entry_header.header_size as u64;
@@ -380,6 +431,7 @@ impl FatBinary {
 
             entries.push(FatBinaryEntry {
                 entry_header,
+                ptxas_options,
                 payload,
             })
         }
@@ -413,7 +465,7 @@ impl FatBinary {
             writer.write_all(&entry.entry_header.header_size.to_le_bytes())?;
             writer.write_all(&entry.entry_header.size.to_le_bytes())?;
             writer.write_all(&entry.entry_header.compressed_size.to_le_bytes())?;
-            writer.write_all(&entry.entry_header.__unknown2.to_le_bytes())?;
+            writer.write_all(&entry.entry_header.options_offset.to_le_bytes())?;
             writer.write_all(&entry.entry_header.minor.to_le_bytes())?;
             writer.write_all(&entry.entry_header.major.to_le_bytes())?;
             writer.write_all(&entry.entry_header.arch.to_le_bytes())?;

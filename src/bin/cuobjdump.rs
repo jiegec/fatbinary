@@ -78,7 +78,7 @@ fn main() -> anyhow::Result<()> {
                 match entry.producer() {
                     fatbinary::Producer::CUDA => "cuda",
                     fatbinary::Producer::OpenCL => "opencl",
-                    fatbinary::Producer::Unknown => "unknown",
+                    fatbinary::Producer::Unknown => "<unknown>",
                 }
             );
             println!(
@@ -101,6 +101,10 @@ fn main() -> anyhow::Result<()> {
 
             if entry.is_compressed() {
                 println!("compressed");
+            }
+
+            if let Some(ptxas_options) = entry.get_ptxas_options() {
+                println!("ptxasOptions = {}", ptxas_options);
             }
 
             if args.verbose {
