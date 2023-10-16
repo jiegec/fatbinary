@@ -1,7 +1,12 @@
 use anyhow;
 use clap::Parser;
 use fatbinary::FatBinary;
-use std::{ffi::OsString, fs::File, io::Write, path::PathBuf};
+use std::{
+    ffi::OsString,
+    fs::File,
+    io::{Seek, Write, SeekFrom},
+    path::PathBuf,
+};
 
 #[derive(Parser)]
 struct Cli {
@@ -15,11 +20,10 @@ struct Cli {
 
 fn main() -> anyhow::Result<()> {
     let args = Cli::parse();
-    let file = File::open(&args.fatbin)?;
-
-    let fatbinary = FatBinary::read(file)?;
+    let mut file = File::open(&args.fatbin)?;
 
     if args.ptx.is_some() {
+        let fatbinary = FatBinary::read(file)?;
         let mut i = 1;
         let file_name = args
             .fatbin
@@ -49,35 +53,40 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    for entry in fatbinary.entries() {
-        println!();
-        println!(
-            "Fatbin {} code:",
-            if entry.contains_elf() { "elf" } else { "ptx" }
-        );
-        println!("=================");
-        println!("arch = sm_{}", entry.get_sm_arch());
-        println!(
-            "code version = [{}, {}]",
-            entry.get_version_major(),
-            entry.get_version_minor()
-        );
-        println!("producer = <unknown>");
-        println!(
-            "host = {}",
-            if entry.is_linux() { "linux" } else { "windows" }
-        );
-        println!(
-            "compile_size = {}",
-            if entry.is_64bit() { "64bit" } else { "32bit" }
-        );
+    // support concatenated fatbinary file (e.g. objcopy-ed from .nv_fatbin section)
+    let file_size = file.metadata()?.len();
+    while file.seek(SeekFrom::Current(0))? < file_size {
+        let fatbinary = FatBinary::read(&mut file)?;
+        for entry in fatbinary.entries() {
+            println!();
+            println!(
+                "Fatbin {} code:",
+                if entry.contains_elf() { "elf" } else { "ptx" }
+            );
+            println!("================");
+            println!("arch = sm_{}", entry.get_sm_arch());
+            println!(
+                "code version = [{},{}]",
+                entry.get_version_major(),
+                entry.get_version_minor()
+            );
+            println!("producer = <unknown>");
+            println!(
+                "host = {}",
+                if entry.is_linux() { "linux" } else { "windows" }
+            );
+            println!(
+                "compile_size = {}",
+                if entry.is_64bit() { "64bit" } else { "32bit" }
+            );
 
-        if entry.has_debug_info() {
-            println!("has debug info");
-        }
+            if entry.has_debug_info() {
+                println!("has debug info");
+            }
 
-        if entry.is_compressed() {
-            println!("compressed");
+            if entry.is_compressed() {
+                println!("compressed");
+            }
         }
     }
     Ok(())
