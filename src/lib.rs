@@ -55,7 +55,7 @@ struct FatBinaryHeader {
     pub size: u64,
 }
 
-// https://github.com/n-eiling/cuda-fatbin-decompression/blob/9b194a9aa526b71131990ddd97ff5c41a273ace5/fatbin-decompress.c#L22
+// learned from https://github.com/n-eiling/cuda-fatbin-decompression/blob/9b194a9aa526b71131990ddd97ff5c41a273ace5/fatbin-decompress.c#L22
 
 const FATBINARY_FLAG_64BIT: u64 = 0x00000001;
 const FATBINARY_FLAG_DEBUG: u64 = 0x00000002;
