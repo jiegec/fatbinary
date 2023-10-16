@@ -233,6 +233,11 @@ impl FatBinaryEntry {
     pub fn is_compressed(&self) -> bool {
         (self.entry_header.flags & FATBINARY_FLAG_COMPRESSED) != 0
     }
+
+    /// Check if debug info is contained
+    pub fn has_debug_info(&self) -> bool {
+        (self.entry_header.flags & FATBINARY_FLAG_DEBUG) != 0
+    }
 }
 
 /// A fatbinary file
@@ -371,8 +376,8 @@ mod tests {
     use crate::FatBinary;
 
     #[test]
-    fn read_axpy() {
-        let file = File::open("tests/axpy.cu-cuda-nvptx64-nvidia-cuda.fatbin").unwrap();
+    fn read_axpy_default() {
+        let file = File::open("tests/axpy-default.fatbin").unwrap();
         let fatbin = FatBinary::read(file).unwrap();
 
         // has two entries
@@ -392,5 +397,19 @@ mod tests {
         // check if valid ptx
         let ptx_code = String::from_utf8(entries[1].get_decompressed_payload().to_vec()).unwrap();
         assert!(ptx_code.contains(".target sm_70"));
+    }
+
+    #[test]
+    fn read_axpy_debug() {
+        let file = File::open("tests/axpy-debug.fatbin").unwrap();
+        let fatbin = FatBinary::read(file).unwrap();
+
+        let entries = fatbin.entries();
+
+        // first is elf
+        assert!(entries[0].has_debug_info());
+
+        // second is ptx
+        assert!(entries[1].has_debug_info());
     }
 }

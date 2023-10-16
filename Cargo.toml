@@ -4,7 +4,6 @@ version = "0.1.0"
 edition = "2021"
 description = "Rust library to manipulate CUDA fatbinary format"
 license = "MIT"
-license-file = "LICENSE"
 homepage = "https://github.com/jiegec/fatbinary"
 repository = "https://github.com/jiegec/fatbinary"
 

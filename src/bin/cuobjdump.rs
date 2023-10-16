@@ -72,6 +72,10 @@ fn main() -> anyhow::Result<()> {
             if entry.is_64bit() { "64bit" } else { "32bit" }
         );
 
+        if entry.has_debug_info() {
+            println!("has debug info");
+        }
+
         if entry.is_compressed() {
             println!("compressed");
         }
