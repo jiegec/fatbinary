@@ -65,11 +65,15 @@ const FATBINARY_FLAG_COMPRESSED: u64 = 0x00002000;
 #[repr(C, packed)]
 #[derive(BinRead, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FatBinaryEntryHeader {
+    /// 0x02 if ELF, 0x01 if PTX
     kind: u16,
+    /// 0x101
     __unknown1: u16,
+    /// 0x40 if ELF, 0x48 if PTX
     header_size: u32,
     size: u64,
     compressed_size: u32,
+    /// 0x00 if ELF, 0x40 if PTX
     __unknown2: u32,
     minor: u16,
     major: u16,
@@ -79,6 +83,7 @@ pub struct FatBinaryEntryHeader {
     flags: u64,
     zero: u64,
     decompressed_size: u64,
+    // additional 8 bytes of zero here if PTX
 }
 
 /// A fatbinary entry
@@ -162,11 +167,11 @@ impl FatBinaryEntry {
         Self {
             entry_header: FatBinaryEntryHeader {
                 kind: if is_elf { 2 } else { 1 },
-                __unknown1: 0,
+                __unknown1: 0x0101,
                 header_size: 64,
                 size: payload.len() as u64,
                 compressed_size: 0,
-                __unknown2: 0,
+                __unknown2: if is_elf { 0x00 } else { 0x40 },
                 minor,
                 major,
                 arch: sm_arch,
