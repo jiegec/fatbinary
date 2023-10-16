@@ -64,21 +64,21 @@ const FATBINARY_FLAG_COMPRESSED: u64 = 0x00002000;
 
 #[repr(C, packed)]
 #[derive(BinRead, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-struct FatBinaryEntryHeader {
-    pub kind: u16,
-    pub __unknown1: u16,
-    pub header_size: u32,
-    pub size: u64,
-    pub compressed_size: u32,
-    pub __unknown2: u32,
-    pub minor: u16,
-    pub major: u16,
-    pub arch: u32,
-    pub obj_name_offset: u32,
-    pub obj_name_len: u32,
-    pub flags: u64,
-    pub zero: u64,
-    pub decompressed_size: u64,
+pub struct FatBinaryEntryHeader {
+    kind: u16,
+    __unknown1: u16,
+    header_size: u32,
+    size: u64,
+    compressed_size: u32,
+    __unknown2: u32,
+    minor: u16,
+    major: u16,
+    arch: u32,
+    obj_name_offset: u32,
+    obj_name_len: u32,
+    flags: u64,
+    zero: u64,
+    decompressed_size: u64,
 }
 
 /// A fatbinary entry
@@ -253,6 +253,11 @@ impl FatBinaryEntry {
     /// Check if debug info is contained
     pub fn has_debug_info(&self) -> bool {
         (self.entry_header.flags & FATBINARY_FLAG_DEBUG) != 0
+    }
+
+    /// Get header of this entry
+    pub fn get_header(&self) -> &FatBinaryEntryHeader {
+        &self.entry_header
     }
 }
 

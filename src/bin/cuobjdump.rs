@@ -13,6 +13,10 @@ struct Cli {
     #[arg(long = "extract-ptx")]
     ptx: Option<String>,
 
+    /// Enable verbose message
+    #[arg(long)]
+    verbose: bool,
+
     /// Fatbin file
     fatbin: PathBuf,
 }
@@ -85,6 +89,10 @@ fn main() -> anyhow::Result<()> {
 
             if entry.is_compressed() {
                 println!("compressed");
+            }
+
+            if args.verbose {
+                println!("internal: {:#x?}", entry.get_header());
             }
         }
     }
