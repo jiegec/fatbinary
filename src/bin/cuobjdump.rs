@@ -73,10 +73,22 @@ fn main() -> anyhow::Result<()> {
                 entry.get_version_major(),
                 entry.get_version_minor()
             );
-            println!("producer = <unknown>");
+            println!(
+                "producer = {}",
+                match entry.producer() {
+                    fatbinary::Producer::CUDA => "cuda",
+                    fatbinary::Producer::OpenCL => "opencl",
+                    fatbinary::Producer::Unknown => "unknown",
+                }
+            );
             println!(
                 "host = {}",
-                if entry.is_linux() { "linux" } else { "windows" }
+                match entry.host() {
+                    fatbinary::Host::Linux => "linux",
+                    fatbinary::Host::Mac => "mac",
+                    fatbinary::Host::Windows => "windows",
+                    fatbinary::Host::Unknown => "unknown",
+                },
             );
             println!(
                 "compile_size = {}",

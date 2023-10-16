@@ -57,10 +57,31 @@ struct FatBinaryHeader {
 
 // learned from https://github.com/n-eiling/cuda-fatbin-decompression/blob/9b194a9aa526b71131990ddd97ff5c41a273ace5/fatbin-decompress.c#L22
 
-const FATBINARY_FLAG_64BIT: u64 = 0x00000001;
+const FATBINARY_FLAG_COMPILE_SIZE_64BIT: u64 = 0x00000001;
 const FATBINARY_FLAG_DEBUG: u64 = 0x00000002;
-const FATBINARY_FLAG_LINUX: u64 = 0x00000010;
+const FATBINARY_FLAG_PRODUCER_CUDA: u64 = 0x00000004;
+const FATBINARY_FLAG_PRODUCER_OPENCL: u64 = 0x00000008;
+const FATBINARY_FLAG_HOST_LINUX: u64 = 0x00000010;
+const FATBINARY_FLAG_HOST_MAC: u64 = 0x00000020;
+const FATBINARY_FLAG_HOST_WINDOWS: u64 = 0x00000040;
 const FATBINARY_FLAG_COMPRESSED: u64 = 0x00002000;
+
+/// Host platform of [FatBinaryEntry]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Host {
+    Linux,
+    Mac,
+    Windows,
+    Unknown,
+}
+
+/// Producer of the [FatBinaryEntry]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Producer {
+    CUDA,
+    OpenCL,
+    Unknown,
+}
 
 #[repr(C, packed)]
 #[derive(BinRead, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -177,7 +198,11 @@ impl FatBinaryEntry {
                 arch: sm_arch,
                 obj_name_offset: 0,
                 obj_name_len: 0,
-                flags: if is_64bit { FATBINARY_FLAG_64BIT } else { 0 },
+                flags: if is_64bit {
+                    FATBINARY_FLAG_COMPILE_SIZE_64BIT
+                } else {
+                    0
+                },
                 zero: 0,
                 decompressed_size: 0,
             },
@@ -242,12 +267,31 @@ impl FatBinaryEntry {
 
     /// Check if compiled for 64 bit
     pub fn is_64bit(&self) -> bool {
-        (self.entry_header.flags & FATBINARY_FLAG_64BIT) != 0
+        (self.entry_header.flags & FATBINARY_FLAG_COMPILE_SIZE_64BIT) != 0
     }
 
-    /// Check if compiled in/for linux
-    pub fn is_linux(&self) -> bool {
-        (self.entry_header.flags & FATBINARY_FLAG_LINUX) != 0
+    /// Get compiled in/for which host
+    pub fn host(&self) -> Host {
+        if (self.entry_header.flags & FATBINARY_FLAG_HOST_LINUX) != 0 {
+            Host::Linux
+        } else if (self.entry_header.flags & FATBINARY_FLAG_HOST_MAC) != 0 {
+            Host::Mac
+        } else if (self.entry_header.flags & FATBINARY_FLAG_HOST_WINDOWS) != 0 {
+            Host::Windows
+        } else {
+            Host::Unknown
+        }
+    }
+
+    /// Get the producer of this entry
+    pub fn producer(&self) -> Producer {
+        if (self.entry_header.flags & FATBINARY_FLAG_PRODUCER_CUDA) != 0 {
+            Producer::CUDA
+        } else if (self.entry_header.flags & FATBINARY_FLAG_PRODUCER_OPENCL) != 0 {
+            Producer::OpenCL
+        } else {
+            Producer::Unknown
+        }
     }
 
     /// Check if payload is compressed
