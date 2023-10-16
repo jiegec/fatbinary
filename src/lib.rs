@@ -1,4 +1,4 @@
-//! fatbinary create: parse and manipulate fatbinary files
+//! fatbinary crate: parse and manipulate fatbinary files
 //!
 //! You can use [FatBinary] struct to open and create fatbinary files. Fatbinary
 //! contains multiple entries containing ELF or PTX files, and each entry can be
