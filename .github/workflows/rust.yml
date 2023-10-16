@@ -22,7 +22,7 @@ jobs:
       uses: Jimver/cuda-toolkit@v0.2.11
       with:
         method: 'network'
-        sub-packages: '["nvcc"]'
+        sub-packages: '["nvcc", "libraries"]'
     - name: Prepare for testing
       run: cd tests && ./build.sh
     - name: Run tests
