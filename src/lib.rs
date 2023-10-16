@@ -94,6 +94,7 @@ pub enum Producer {
     Unknown,
 }
 
+/// Header of an entry in fat binary
 #[repr(C, packed)]
 #[derive(BinRead, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FatBinaryEntryHeader {
