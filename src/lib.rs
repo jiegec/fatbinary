@@ -366,9 +366,31 @@ impl FatBinary {
 
 #[cfg(test)]
 mod tests {
+    use std::fs::File;
+
+    use crate::FatBinary;
+
     #[test]
-    fn it_works() {
-        let result = 2 + 2;
-        assert_eq!(result, 4);
+    fn read_axpy() {
+        let file = File::open("tests/axpy.cu-cuda-nvptx64-nvidia-cuda.fatbin").unwrap();
+        let fatbin = FatBinary::read(file).unwrap();
+
+        // has two entries
+        let entries = fatbin.entries();
+        assert_eq!(entries.len(), 2);
+
+        // first is elf
+        assert!(entries[0].contains_elf());
+        // --cuda-gpu-arch=sm_70 is specified in build.sh
+        assert_eq!(entries[0].get_sm_arch(), 70);
+
+        // second is ptx
+        assert!(!entries[1].contains_elf());
+        // --cuda-gpu-arch=sm_70 is specified in build.sh
+        assert_eq!(entries[1].get_sm_arch(), 70);
+
+        // check if valid ptx
+        let ptx_code = String::from_utf8(entries[1].get_decompressed_payload().to_vec()).unwrap();
+        assert!(ptx_code.contains(".target sm_70"));
     }
 }
