@@ -326,7 +326,7 @@ impl FatBinaryEntry {
 
     /// Get ptxas options
     pub fn get_ptxas_options(&self) -> Option<&str> {
-        self.ptxas_options.as_ref().map(|s| s.as_str())
+        self.ptxas_options.as_deref()
     }
 }
 
@@ -419,7 +419,7 @@ impl FatBinary {
                         entry_header.header_size as usize
                         - std::mem::size_of::<FatBinaryEntryHeader>()
                         - std::mem::size_of::<u32>() // ptxas_options_offset
-                        - std::mem::size_of::<u32>()// ptxas_options_size
+                        - std::mem::size_of::<u32>() // ptxas_options_size
                         - ptxas_options_size as usize
                         // ptxas_options
                     ) as i64,
