@@ -398,18 +398,20 @@ impl FatBinary {
                 let ptxas_options_size: u32 = reader.read_le()?;
 
                 // locate ptxas options
-                reader.seek(SeekFrom::Current(
-                    (
-                        ptxas_options_offset as usize
+                if ptxas_options_offset != 0 {
+                    reader.seek(SeekFrom::Current(
+                        (
+                            ptxas_options_offset as usize
                         - std::mem::size_of::<FatBinaryEntryHeader>()
                         - std::mem::size_of::<u32>() // ptxas_options_offset
                         - std::mem::size_of::<u32>()
-                        // ptxas_options_size
-                    ) as i64,
-                ))?;
-                let mut ptxas_options_bytes = vec![0u8; ptxas_options_size as usize];
-                reader.read_exact(&mut ptxas_options_bytes)?;
-                ptxas_options = Some(String::from_utf8(ptxas_options_bytes)?);
+                            // ptxas_options_size
+                        ) as i64,
+                    ))?;
+                    let mut ptxas_options_bytes = vec![0u8; ptxas_options_size as usize];
+                    reader.read_exact(&mut ptxas_options_bytes)?;
+                    ptxas_options = Some(String::from_utf8(ptxas_options_bytes)?);
+                }
 
                 // seek to payload
                 reader.seek(SeekFrom::Current(
