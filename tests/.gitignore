@@ -3,3 +3,4 @@ axpy
 *.bc
 *.cui
 *.s
+*.cubin
