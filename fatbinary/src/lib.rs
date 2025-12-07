@@ -125,6 +125,7 @@ pub struct FatBinaryEntryHeader {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FatBinaryEntry {
     entry_header: FatBinaryEntryHeader,
+    obj_name: Option<String>,
     ptxas_options: Option<String>,
     payload: Vec<u8>,
 }
@@ -221,6 +222,7 @@ impl FatBinaryEntry {
                 zero: 0,
                 decompressed_size: 0,
             },
+            obj_name: None,
             ptxas_options: None,
             payload,
         }
@@ -329,6 +331,11 @@ impl FatBinaryEntry {
     pub fn get_ptxas_options(&self) -> Option<&str> {
         self.ptxas_options.as_deref()
     }
+
+    /// Get obj name
+    pub fn get_obj_name(&self) -> Option<&str> {
+        self.obj_name.as_deref()
+    }
 }
 
 /// A fatbinary file
@@ -386,10 +393,11 @@ impl FatBinary {
         while current_size < header.size {
             let header_offset = reader.stream_position()?;
             let entry_header: FatBinaryEntryHeader = reader.read_le()?;
-
-            // handle case when header size > 64 e.g. PTX
+            let mut obj_name = None;
             let mut ptxas_options = None;
-            if entry_header.header_size > std::mem::size_of::<FatBinaryEntryHeader>() as u32 {
+
+            // handle ptxas options
+            if entry_header.options_offset > 0 {
                 reader.seek(SeekFrom::Start(
                     header_offset + entry_header.options_offset as u64,
                 ))?;
@@ -403,20 +411,28 @@ impl FatBinary {
                     reader.read_exact(&mut ptxas_options_bytes)?;
                     ptxas_options = Some(String::from_utf8(ptxas_options_bytes)?);
                 }
-
-                // seek to payload
-                reader.seek(SeekFrom::Start(
-                    header_offset + entry_header.header_size as u64,
-                ))?;
             }
+            // handle object name
+            if entry_header.obj_name_offset > 0 {
+                reader.seek(SeekFrom::Start(header_offset + entry_header.obj_name_offset as u64))?;
+                let mut obj_name_bytes = vec![0u8; entry_header.obj_name_len as usize];
+                reader.read_exact(&mut obj_name_bytes)?;
+                obj_name = Some(String::from_utf8(obj_name_bytes)?);
+            }
+
             current_size += entry_header.header_size as u64;
 
+            // seek to payload
+            reader.seek(SeekFrom::Start(
+                header_offset + entry_header.header_size as u64,
+            ))?;
             let mut payload = vec![0; entry_header.size as usize];
             reader.read_exact(&mut payload[..])?;
             current_size += entry_header.size;
 
             entries.push(FatBinaryEntry {
                 entry_header,
+                obj_name,
                 ptxas_options,
                 payload,
             })
@@ -557,6 +573,10 @@ mod tests {
         assert_eq!(
             String::from_utf8(fatbin.entries()[0].get_payload().to_vec()).unwrap(),
             "\n.target sm_80\n.visible .entry test() {ret;}\0\0\0\0"
+        );
+        assert_eq!(
+            fatbin.entries()[0].get_obj_name().unwrap(),
+            "test.ptx"
         );
     }
 }
