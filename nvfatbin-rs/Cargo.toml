@@ -1,0 +1,12 @@
+[package]
+name = "nvfatbin-rs"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+
+[dependencies]
+libc = "0.2"
+thiserror = "1.0"
+
+[build-dependencies]
+bindgen = "0.69"
