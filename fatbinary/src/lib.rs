@@ -384,46 +384,29 @@ impl FatBinary {
         let mut current_size = 0;
 
         while current_size < header.size {
+            let header_offset = reader.stream_position()?;
             let entry_header: FatBinaryEntryHeader = reader.read_le()?;
 
             // handle case when header size > 64 e.g. PTX
             let mut ptxas_options = None;
             if entry_header.header_size > std::mem::size_of::<FatBinaryEntryHeader>() as u32 {
-                if entry_header.options_offset != 0x40 {
-                    return Err(FatBinaryError::InvalidOffset {
-                        expected: 0x40,
-                        got: entry_header.options_offset,
-                    });
-                }
+                reader.seek(SeekFrom::Start(
+                    header_offset + entry_header.options_offset as u64,
+                ))?;
                 let ptxas_options_offset: u32 = reader.read_le()?;
                 let ptxas_options_size: u32 = reader.read_le()?;
 
                 // locate ptxas options
                 if ptxas_options_offset != 0 {
-                    reader.seek(SeekFrom::Current(
-                        (
-                            ptxas_options_offset as usize
-                        - std::mem::size_of::<FatBinaryEntryHeader>()
-                        - std::mem::size_of::<u32>() // ptxas_options_offset
-                        - std::mem::size_of::<u32>()
-                            // ptxas_options_size
-                        ) as i64,
-                    ))?;
+                    reader.seek(SeekFrom::Start(header_offset + ptxas_options_offset as u64))?;
                     let mut ptxas_options_bytes = vec![0u8; ptxas_options_size as usize];
                     reader.read_exact(&mut ptxas_options_bytes)?;
                     ptxas_options = Some(String::from_utf8(ptxas_options_bytes)?);
                 }
 
                 // seek to payload
-                reader.seek(SeekFrom::Current(
-                    (
-                        entry_header.header_size as usize
-                        - std::mem::size_of::<FatBinaryEntryHeader>()
-                        - std::mem::size_of::<u32>() // ptxas_options_offset
-                        - std::mem::size_of::<u32>() // ptxas_options_size
-                        - ptxas_options_size as usize
-                        // ptxas_options
-                    ) as i64,
+                reader.seek(SeekFrom::Start(
+                    header_offset + entry_header.header_size as u64,
                 ))?;
             }
             current_size += entry_header.header_size as u64;
@@ -559,5 +542,21 @@ mod tests {
         let nvfatbin = nvfatbin_rs::Fatbin::new(&[]).unwrap();
         let nvfatbin_data = nvfatbin.to_vec().unwrap();
         assert_eq!(buffer, nvfatbin_data);
+    }
+
+    #[test]
+    fn test_create_fatbin_with_ptx() {
+        let mut nvfatbin = nvfatbin_rs::Fatbin::new(&["-compress=false"]).unwrap();
+        let ptx = ".version 8.3\n.target sm_80\n.visible .entry test() {ret;}";
+        nvfatbin.add_ptx(ptx, "80", "test.ptx", "").unwrap();
+        let mut nvfatbin_data = nvfatbin.to_vec().unwrap();
+        std::fs::write("test.fatbin", &nvfatbin_data).unwrap();
+
+        let cursor = Cursor::new(&mut nvfatbin_data);
+        let fatbin = FatBinary::read(cursor).unwrap();
+        assert_eq!(
+            String::from_utf8(fatbin.entries()[0].get_payload().to_vec()).unwrap(),
+            "\n.target sm_80\n.visible .entry test() {ret;}\0\0\0\0"
+        );
     }
 }

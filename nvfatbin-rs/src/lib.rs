@@ -162,7 +162,7 @@ impl Fatbin {
     ///
     /// # Arguments
     /// * `code` - PTX source code as a string.
-    /// * `arch` - Target architecture (e.g., "sm_75").
+    /// * `arch` - Target architecture (e.g., "75").
     /// * `identifier` - Name for this PTX entry.
     /// * `options_cmd_line` - Compilation options (can be empty string).
     pub fn add_ptx(
