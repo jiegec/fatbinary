@@ -21,7 +21,7 @@ jobs:
     - name: Setup CUDA
       uses: Jimver/cuda-toolkit@v0.2.29
       with:
-        cuda: '12.5.0'
+        cuda: '12.5.1'
         method: 'network'
         sub-packages: '["nvcc", "libraries-dev"]'
     - name: Prepare for testing
