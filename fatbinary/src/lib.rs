@@ -29,10 +29,6 @@ pub enum FatBinaryError {
     #[error("Invalid header size (expected {expected:?}, got {got:?})")]
     InvalidHeaderSize { expected: u16, got: u16 },
 
-    /// Got invalid offset
-    #[error("Invalid offset (expected {expected:?}, got {got:?})")]
-    InvalidOffset { expected: u32, got: u32 },
-
     /// Got error from binread crate
     #[error("Got binread::Error {source:?}")]
     Binread {
