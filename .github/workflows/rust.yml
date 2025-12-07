@@ -24,6 +24,8 @@ jobs:
         cuda: '12.5.1'
         method: 'network'
         sub-packages: '["nvcc", "libraries-dev"]'
+    - name: Install gcc 11
+      run: sudo apt update && sudo apt install -y gcc-11
     - name: Prepare for testing
       run: cd tests && ./build.sh
     - name: Run tests
