@@ -16,8 +16,6 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
-    - name: Build
-      run: cargo build --verbose
     - name: Setup CUDA
       uses: Jimver/cuda-toolkit@v0.2.29
       with:
@@ -28,5 +26,7 @@ jobs:
       run: sudo apt update && sudo apt install -y gcc-11 g++-11
     - name: Prepare for testing
       run: cd fatbinary/tests && ./build.sh
+    - name: Build
+      run: cargo build --verbose
     - name: Run tests
       run: cargo test --verbose
