@@ -13,4 +13,4 @@ repository = "https://github.com/jiegec/fatbinary"
 anyhow = "1.0.75"
 binread = "2.2.0"
 clap = { version = "4.4.6", features = ["derive"] }
-thiserror = "1.0.49"
+thiserror = "2.0.17"
