@@ -98,11 +98,11 @@ pub struct FatBinaryEntryHeader {
     kind: u16,
     /// 0x101
     __unknown1: u16,
-    /// 0x40 if ELF, >=0x48 if PTX
+    /// 0x40 + optional fields
     header_size: u32,
     size: u64,
     compressed_size: u32,
-    /// 0x00 if ELF, 0x40 if PTX
+    /// points to ptxas_options if available
     options_offset: u32,
     minor: u16,
     major: u16,
@@ -204,7 +204,7 @@ impl FatBinaryEntry {
                 header_size: 64,
                 size: payload.len() as u64,
                 compressed_size: 0,
-                options_offset: if is_elf { 0x00 } else { 0x40 },
+                options_offset: 0x40,
                 minor,
                 major,
                 arch: sm_arch,
@@ -223,6 +223,7 @@ impl FatBinaryEntry {
             payload,
         }
     }
+
     /// Get (possibly compressed) payload contained in this entry
     pub fn get_payload(&self) -> &[u8] {
         if self.is_compressed() {
@@ -332,6 +333,16 @@ impl FatBinaryEntry {
     pub fn get_identifier(&self) -> Option<&str> {
         self.identifier.as_deref()
     }
+
+    /// Set the identifier (object name) for this entry
+    pub fn set_identifier(&mut self, identifier: String) {
+        self.identifier = Some(identifier);
+    }
+
+    /// Set the ptxas options for this entry (only valid for PTX entries)
+    pub fn set_ptxas_options(&mut self, options: String) {
+        self.ptxas_options = Some(options);
+    }
 }
 
 /// A fatbinary file
@@ -410,7 +421,9 @@ impl FatBinary {
             }
             // handle object name
             if entry_header.identifier_offset > 0 {
-                reader.seek(SeekFrom::Start(header_offset + entry_header.identifier_offset as u64))?;
+                reader.seek(SeekFrom::Start(
+                    header_offset + entry_header.identifier_offset as u64,
+                ))?;
                 let mut identifier_bytes = vec![0u8; entry_header.identifier_len as usize];
                 reader.read_exact(&mut identifier_bytes)?;
                 identifier = Some(String::from_utf8(identifier_bytes)?);
@@ -438,18 +451,49 @@ impl FatBinary {
         Ok(res)
     }
 
-    /// Wriet fatbinary to writer
+    /// Write fatbinary to writer
     pub fn write<W: Write>(&self, mut writer: W) -> Result<(), FatBinaryError> {
-        let payload_size = self
-            .entries
-            .iter()
-            .map(|entry| entry.entry_header.header_size as u64 + entry.entry_header.size)
-            .sum();
+        // Compute total size of all entries (including identifier and ptxas options)
+        let mut total_size = 0u64;
+        let mut entries_data = Vec::new();
+        for entry in &self.entries {
+            let identifier_bytes = entry
+                .identifier
+                .as_ref()
+                .map(|s| s.as_bytes())
+                .unwrap_or(&[]);
+            let ptxas_options_bytes = entry
+                .ptxas_options
+                .as_ref()
+                .map(|s| s.as_bytes())
+                .unwrap_or(&[]);
+            let identifier_len = identifier_bytes.len() as u32;
+            let ptxas_options_len = ptxas_options_bytes.len() as u32;
+            let header_size = entry.entry_header.header_size;
+            let ptxas_options_offset = header_size + 8;
+            let identifier_offset = ptxas_options_offset + ptxas_options_len;
+            let header_total = header_size as u64
+                + 8 // ptxas_options_offset + ptxas_options_size
+                + ptxas_options_len as u64
+                + identifier_len as u64;
+            let entry_total = header_total + entry.entry_header.size;
+            total_size += entry_total;
+            entries_data.push((
+                identifier_bytes,
+                ptxas_options_bytes,
+                identifier_len,
+                ptxas_options_len,
+                identifier_offset,
+                ptxas_options_offset,
+                header_total,
+            ));
+        }
+
         let header = FatBinaryHeader {
             magic: FAT_BINARY_MAGIC,
             version: 1,
             header_size: std::mem::size_of::<FatBinaryHeader>() as u16,
-            size: payload_size,
+            size: total_size,
         };
 
         writer.write_all(&header.magic.to_le_bytes())?;
@@ -457,31 +501,51 @@ impl FatBinary {
         writer.write_all(&header.header_size.to_le_bytes())?;
         writer.write_all(&header.size.to_le_bytes())?;
 
-        for entry in &self.entries {
-            writer.write_all(&entry.entry_header.kind.to_le_bytes())?;
-            writer.write_all(&entry.entry_header.__unknown1.to_le_bytes())?;
-            writer.write_all(&entry.entry_header.header_size.to_le_bytes())?;
-            writer.write_all(&entry.entry_header.size.to_le_bytes())?;
-            writer.write_all(&entry.entry_header.compressed_size.to_le_bytes())?;
-            writer.write_all(&entry.entry_header.options_offset.to_le_bytes())?;
-            writer.write_all(&entry.entry_header.minor.to_le_bytes())?;
-            writer.write_all(&entry.entry_header.major.to_le_bytes())?;
-            writer.write_all(&entry.entry_header.arch.to_le_bytes())?;
-            writer.write_all(&entry.entry_header.identifier_offset.to_le_bytes())?;
-            writer.write_all(&entry.entry_header.identifier_len.to_le_bytes())?;
-            writer.write_all(&entry.entry_header.flags.to_le_bytes())?;
-            writer.write_all(&entry.entry_header.zero.to_le_bytes())?;
-            writer.write_all(&entry.entry_header.decompressed_size.to_le_bytes())?;
+        for (entry, data) in self.entries.iter().zip(entries_data.iter()) {
+            let (
+                identifier_bytes,
+                ptxas_options_bytes,
+                identifier_len,
+                ptxas_options_len,
+                identifier_offset,
+                ptxas_options_offset,
+                full_header_size,
+            ) = data;
 
-            if entry.entry_header.header_size > std::mem::size_of::<FatBinaryEntryHeader>() as u32 {
-                let zeros = vec![
-                    0u8;
-                    entry.entry_header.header_size as usize
-                        - std::mem::size_of::<FatBinaryEntryHeader>()
-                ];
-                writer.write_all(&zeros)?;
-            }
+            // Create a mutable copy of the header with updated identifier fields
+            let mut header = entry.entry_header;
+            header.header_size = *full_header_size as u32;
+            header.identifier_offset = *identifier_offset;
+            header.identifier_len = *identifier_len;
 
+            // Write header fields
+            writer.write_all(&header.kind.to_le_bytes())?;
+            writer.write_all(&header.__unknown1.to_le_bytes())?;
+            writer.write_all(&header.header_size.to_le_bytes())?;
+            writer.write_all(&header.size.to_le_bytes())?;
+            writer.write_all(&header.compressed_size.to_le_bytes())?;
+            writer.write_all(&header.options_offset.to_le_bytes())?;
+            writer.write_all(&header.minor.to_le_bytes())?;
+            writer.write_all(&header.major.to_le_bytes())?;
+            writer.write_all(&header.arch.to_le_bytes())?;
+            writer.write_all(&header.identifier_offset.to_le_bytes())?;
+            writer.write_all(&header.identifier_len.to_le_bytes())?;
+            writer.write_all(&header.flags.to_le_bytes())?;
+            writer.write_all(&header.zero.to_le_bytes())?;
+            writer.write_all(&header.decompressed_size.to_le_bytes())?;
+
+            // For PTX entries, options_offset is 0x40, which points to the start of extra header area.
+            // Write ptxas_options_offset and ptxas_options_size as two u32s.
+            writer.write_all(&ptxas_options_offset.to_le_bytes())?;
+            writer.write_all(&ptxas_options_len.to_le_bytes())?;
+
+            // Write ptxas options bytes
+            writer.write_all(ptxas_options_bytes)?;
+
+            // Write identifier bytes
+            writer.write_all(identifier_bytes)?;
+
+            // Write payload
             writer.write_all(&entry.payload)?;
         }
 
@@ -493,7 +557,7 @@ impl FatBinary {
 mod tests {
     use std::{fs::File, io::Cursor};
 
-    use crate::FatBinary;
+    use crate::{FatBinary, FatBinaryEntry};
 
     #[test]
     fn read_axpy_default() {
@@ -570,9 +634,30 @@ mod tests {
             String::from_utf8(fatbin.entries()[0].get_payload().to_vec()).unwrap(),
             "\n.target sm_80\n.visible .entry test() {ret;}\0\0\0\0"
         );
-        assert_eq!(
-            fatbin.entries()[0].get_identifier().unwrap(),
-            "test.ptx"
-        );
+        assert_eq!(fatbin.entries()[0].get_identifier().unwrap(), "test.ptx");
+    }
+
+    #[test]
+    fn test_write_identifier() {
+        // Create a simple PTX entry
+        let ptx = ".version 8.3\n.target sm_80\n.visible .entry test() {ret;}";
+        let mut entry = FatBinaryEntry::new(false, 80, 8, 3, true, ptx.as_bytes());
+        entry.set_identifier("mykernel.ptx".to_string());
+        entry.set_ptxas_options("-O3".to_string());
+
+        let mut fatbin = FatBinary::new();
+        fatbin.entries_mut().push(entry);
+
+        // Write to buffer
+        let mut buffer = vec![];
+        fatbin.write(Cursor::new(&mut buffer)).unwrap();
+
+        // Read back
+        let fatbin2 = FatBinary::read(Cursor::new(&buffer)).unwrap();
+        let entries = fatbin2.entries();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].get_identifier().unwrap(), "mykernel.ptx");
+        assert_eq!(entries[0].get_ptxas_options().unwrap(), "-O3");
+        assert_eq!(entries[0].get_sm_arch(), 80);
     }
 }
