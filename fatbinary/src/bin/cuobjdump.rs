@@ -73,14 +73,16 @@ fn main() -> anyhow::Result<()> {
                 entry.get_version_major(),
                 entry.get_version_minor()
             );
-            println!(
-                "producer = {}",
-                match entry.producer() {
-                    fatbinary::Producer::CUDA => "cuda",
-                    fatbinary::Producer::OpenCL => "opencl",
-                    fatbinary::Producer::Unknown => "<unknown>",
-                }
-            );
+            if entry.producer() != fatbinary::Producer::Unknown {
+                println!(
+                    "producer = {}",
+                    match entry.producer() {
+                        fatbinary::Producer::CUDA => "cuda",
+                        fatbinary::Producer::OpenCL => "opencl",
+                        fatbinary::Producer::Unknown => "<unknown>",
+                    }
+                );
+            }
             println!(
                 "host = {}",
                 match entry.host() {
@@ -101,6 +103,10 @@ fn main() -> anyhow::Result<()> {
 
             if entry.is_compressed() {
                 println!("compressed");
+            }
+
+            if let Some(identifier) = entry.get_identifier() {
+                println!("identifier = {}", identifier);
             }
 
             if let Some(ptxas_options) = entry.get_ptxas_options() {

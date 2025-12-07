@@ -111,8 +111,8 @@ pub struct FatBinaryEntryHeader {
     minor: u16,
     major: u16,
     arch: u32,
-    obj_name_offset: u32,
-    obj_name_len: u32,
+    identifier_offset: u32,
+    identifier_len: u32,
     flags: u64,
     zero: u64,
     decompressed_size: u64,
@@ -125,7 +125,7 @@ pub struct FatBinaryEntryHeader {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FatBinaryEntry {
     entry_header: FatBinaryEntryHeader,
-    obj_name: Option<String>,
+    identifier: Option<String>,
     ptxas_options: Option<String>,
     payload: Vec<u8>,
 }
@@ -212,8 +212,8 @@ impl FatBinaryEntry {
                 minor,
                 major,
                 arch: sm_arch,
-                obj_name_offset: 0,
-                obj_name_len: 0,
+                identifier_offset: 0,
+                identifier_len: 0,
                 flags: if is_64bit {
                     FATBINARY_FLAG_COMPILE_SIZE_64BIT
                 } else {
@@ -222,7 +222,7 @@ impl FatBinaryEntry {
                 zero: 0,
                 decompressed_size: 0,
             },
-            obj_name: None,
+            identifier: None,
             ptxas_options: None,
             payload,
         }
@@ -333,8 +333,8 @@ impl FatBinaryEntry {
     }
 
     /// Get obj name
-    pub fn get_obj_name(&self) -> Option<&str> {
-        self.obj_name.as_deref()
+    pub fn get_identifier(&self) -> Option<&str> {
+        self.identifier.as_deref()
     }
 }
 
@@ -393,7 +393,7 @@ impl FatBinary {
         while current_size < header.size {
             let header_offset = reader.stream_position()?;
             let entry_header: FatBinaryEntryHeader = reader.read_le()?;
-            let mut obj_name = None;
+            let mut identifier = None;
             let mut ptxas_options = None;
 
             // handle ptxas options
@@ -413,11 +413,11 @@ impl FatBinary {
                 }
             }
             // handle object name
-            if entry_header.obj_name_offset > 0 {
-                reader.seek(SeekFrom::Start(header_offset + entry_header.obj_name_offset as u64))?;
-                let mut obj_name_bytes = vec![0u8; entry_header.obj_name_len as usize];
-                reader.read_exact(&mut obj_name_bytes)?;
-                obj_name = Some(String::from_utf8(obj_name_bytes)?);
+            if entry_header.identifier_offset > 0 {
+                reader.seek(SeekFrom::Start(header_offset + entry_header.identifier_offset as u64))?;
+                let mut identifier_bytes = vec![0u8; entry_header.identifier_len as usize];
+                reader.read_exact(&mut identifier_bytes)?;
+                identifier = Some(String::from_utf8(identifier_bytes)?);
             }
 
             current_size += entry_header.header_size as u64;
@@ -432,7 +432,7 @@ impl FatBinary {
 
             entries.push(FatBinaryEntry {
                 entry_header,
-                obj_name,
+                identifier,
                 ptxas_options,
                 payload,
             })
@@ -471,8 +471,8 @@ impl FatBinary {
             writer.write_all(&entry.entry_header.minor.to_le_bytes())?;
             writer.write_all(&entry.entry_header.major.to_le_bytes())?;
             writer.write_all(&entry.entry_header.arch.to_le_bytes())?;
-            writer.write_all(&entry.entry_header.obj_name_offset.to_le_bytes())?;
-            writer.write_all(&entry.entry_header.obj_name_len.to_le_bytes())?;
+            writer.write_all(&entry.entry_header.identifier_offset.to_le_bytes())?;
+            writer.write_all(&entry.entry_header.identifier_len.to_le_bytes())?;
             writer.write_all(&entry.entry_header.flags.to_le_bytes())?;
             writer.write_all(&entry.entry_header.zero.to_le_bytes())?;
             writer.write_all(&entry.entry_header.decompressed_size.to_le_bytes())?;
@@ -575,7 +575,7 @@ mod tests {
             "\n.target sm_80\n.visible .entry test() {ret;}\0\0\0\0"
         );
         assert_eq!(
-            fatbin.entries()[0].get_obj_name().unwrap(),
+            fatbin.entries()[0].get_identifier().unwrap(),
             "test.ptx"
         );
     }
