@@ -496,7 +496,7 @@ impl FatBinary {
 
 #[cfg(test)]
 mod tests {
-    use std::fs::File;
+    use std::{fs::File, io::Cursor};
 
     use crate::FatBinary;
 
@@ -547,5 +547,17 @@ mod tests {
 
         // second is ptx
         assert_eq!(entries[1].get_ptxas_options().unwrap().trim(), "-O3");
+    }
+
+    #[test]
+    fn test_create_empty_fatbin() {
+        let mut buffer = vec![];
+        let cursor = Cursor::new(&mut buffer);
+        let fatbin = FatBinary::new();
+        fatbin.write(cursor).unwrap();
+
+        let nvfatbin = nvfatbin_rs::Fatbin::new(&[]).unwrap();
+        let nvfatbin_data = nvfatbin.to_vec().unwrap();
+        assert_eq!(buffer, nvfatbin_data);
     }
 }

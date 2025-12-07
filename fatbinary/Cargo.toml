@@ -14,3 +14,6 @@ anyhow = "1.0.75"
 binread = "2.2.0"
 clap = { version = "4.4.6", features = ["derive"] }
 thiserror = "2.0.17"
+
+[dev-dependencies]
+nvfatbin-rs = { path = "../nvfatbin-rs" }
