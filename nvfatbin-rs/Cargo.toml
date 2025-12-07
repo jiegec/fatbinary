@@ -6,7 +6,7 @@ build = "build.rs"
 
 [dependencies]
 libc = "0.2"
-thiserror = "1.0"
+thiserror = "2.0"
 
 [build-dependencies]
-bindgen = "0.69"
+bindgen = "0.72"
