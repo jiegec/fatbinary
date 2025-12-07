@@ -1,7 +1,7 @@
 #!/bin/sh
 CFLAGS="--cuda-gpu-arch=sm_70 \
     -L/usr/local/cuda/lib64 \
-    -lcudart_static -ldl -lrt -pthread --save-temps -v"
+    -lcudart_static -ldl -lrt -pthread --std=c++17 --save-temps -v"
 CXX="${CXX:-clang++}"
 
 $CXX axpy.cu -o axpy $CFLAGS
