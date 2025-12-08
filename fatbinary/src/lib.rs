@@ -196,7 +196,11 @@ impl FatBinaryEntry {
         is_64bit: bool,
         payload: T,
     ) -> Self {
-        let payload: Vec<u8> = payload.into();
+        let mut payload: Vec<u8> = payload.into();
+        if payload.len() % 16 != 0 {
+            // add padding
+            payload.resize((payload.len() + 16 - payload.len() % 16) as usize, 0);
+        }
         Self {
             entry_header: FatBinaryEntryHeader {
                 kind: if is_elf { 2 } else { 1 },
@@ -457,25 +461,45 @@ impl FatBinary {
         let mut total_size = 0u64;
         let mut entries_data = Vec::new();
         for entry in &self.entries {
-            let identifier_bytes = entry
+            let mut identifier_bytes = entry
                 .identifier
                 .as_ref()
                 .map(|s| s.as_bytes())
-                .unwrap_or(&[]);
-            let ptxas_options_bytes = entry
+                .unwrap_or(&[])
+                .to_vec();
+            let identifier_len = identifier_bytes.len() as u32;
+            // add padding
+            if identifier_len % 16 != 0 {
+                identifier_bytes.resize((identifier_len + 16 - identifier_len % 16) as usize, 0);
+            }
+
+            let mut ptxas_options_bytes = entry
                 .ptxas_options
                 .as_ref()
                 .map(|s| s.as_bytes())
-                .unwrap_or(&[]);
-            let identifier_len = identifier_bytes.len() as u32;
+                .unwrap_or(&[])
+                .to_vec();
             let ptxas_options_len = ptxas_options_bytes.len() as u32;
-            let header_size = entry.entry_header.header_size;
-            let ptxas_options_offset = header_size + 8;
-            let identifier_offset = ptxas_options_offset + ptxas_options_len;
+            let ptxas_options_with_header = ptxas_options_len + 8;
+            // add padding
+            if ptxas_options_with_header % 16 != 0 {
+                ptxas_options_bytes.resize(
+                    (ptxas_options_len + 16 - ptxas_options_with_header % 16) as usize,
+                    0,
+                );
+            }
+
+            let header_size = 0x40;
+            // 1. identifier
+            let identifier_offset = header_size;
+            // 2. options
+            let options_offset = header_size + identifier_bytes.len() as u32;
+            // 3. ptxas_options
+            let ptxas_options_offset = options_offset + 8;
             let header_total = header_size as u64
+                + identifier_bytes.len() as u64
                 + 8 // ptxas_options_offset + ptxas_options_size
-                + ptxas_options_len as u64
-                + identifier_len as u64;
+                + ptxas_options_bytes.len() as u64;
             let entry_total = header_total + entry.entry_header.size;
             total_size += entry_total;
             entries_data.push((
@@ -485,6 +509,7 @@ impl FatBinary {
                 ptxas_options_len,
                 identifier_offset,
                 ptxas_options_offset,
+                options_offset,
                 header_total,
             ));
         }
@@ -509,12 +534,14 @@ impl FatBinary {
                 ptxas_options_len,
                 identifier_offset,
                 ptxas_options_offset,
+                options_offset,
                 full_header_size,
             ) = data;
 
             // Create a mutable copy of the header with updated identifier fields
             let mut header = entry.entry_header;
             header.header_size = *full_header_size as u32;
+            header.options_offset = *options_offset;
             header.identifier_offset = *identifier_offset;
             header.identifier_len = *identifier_len;
 
@@ -534,6 +561,9 @@ impl FatBinary {
             writer.write_all(&header.zero.to_le_bytes())?;
             writer.write_all(&header.decompressed_size.to_le_bytes())?;
 
+            // Write identifier bytes
+            writer.write_all(identifier_bytes)?;
+
             // For PTX entries, options_offset is 0x40, which points to the start of extra header area.
             // Write ptxas_options_offset and ptxas_options_size as two u32s.
             writer.write_all(&ptxas_options_offset.to_le_bytes())?;
@@ -541,9 +571,6 @@ impl FatBinary {
 
             // Write ptxas options bytes
             writer.write_all(ptxas_options_bytes)?;
-
-            // Write identifier bytes
-            writer.write_all(identifier_bytes)?;
 
             // Write payload
             writer.write_all(&entry.payload)?;
@@ -635,6 +662,18 @@ mod tests {
             "\n.target sm_80\n.visible .entry test() {ret;}\0\0\0\0"
         );
         assert_eq!(fatbin.entries()[0].get_identifier().unwrap(), "test.ptx");
+
+        let mut fatbin = FatBinary::new();
+        let ptx_without_version = "\n.target sm_80\n.visible .entry test() {ret;}";
+        let mut entry = FatBinaryEntry::new_auto(80, ptx_without_version);
+        entry.identifier = Some(String::from("test.ptx"));
+        entry.entry_header.major = 8;
+        entry.entry_header.minor = 3;
+        entry.entry_header.flags |= 16; // what is it?
+        fatbin.entries.push(entry);
+        let mut buffer = vec![];
+        fatbin.write(Cursor::new(&mut buffer)).unwrap();
+        assert_eq!(nvfatbin_data, buffer);
     }
 
     #[test]
