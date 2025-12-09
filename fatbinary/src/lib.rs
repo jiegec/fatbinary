@@ -584,7 +584,7 @@ impl FatBinary {
 mod tests {
     use std::{fs::File, io::Cursor};
 
-    use crate::{FatBinary, FatBinaryEntry};
+    use crate::{FATBINARY_FLAG_HOST_LINUX, FatBinary, FatBinaryEntry};
 
     #[test]
     fn read_axpy_default() {
@@ -669,7 +669,7 @@ mod tests {
         entry.identifier = Some(String::from("test.ptx"));
         entry.entry_header.major = 8;
         entry.entry_header.minor = 3;
-        entry.entry_header.flags |= 16; // what is it?
+        entry.entry_header.flags |= FATBINARY_FLAG_HOST_LINUX; // we don't set it currently
         fatbin.entries.push(entry);
         let mut buffer = vec![];
         fatbin.write(Cursor::new(&mut buffer)).unwrap();
